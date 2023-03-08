@@ -203,11 +203,11 @@ class Jimothy
         }
         
         this.Haste := g_SF.Memory.ReadHasteStacks()
-        if (this.Haste < 50)
-        {
-            this.EndRunTxt := "Ran out of Haste Stacks."
-            return true
-        }
+        ;if (this.Haste < 50)
+        ;{
+        ;    this.EndRunTxt := "Ran out of Haste Stacks."
+        ;    return true
+        ;}
         
         return false
     }
