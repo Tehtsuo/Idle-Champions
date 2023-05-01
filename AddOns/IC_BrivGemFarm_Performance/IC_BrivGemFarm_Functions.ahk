@@ -191,11 +191,16 @@ class IC_BrivGemFarm_Class
             if (CurrentZone == "" AND !g_SF.SafetyCheck() ) ; Check for game closed
                 g_SF.ToggleAutoProgress( 1, false, true ) ; Turn on autoprogress after a restart
             g_SF.SetFormation(g_BrivUserSettings)
-            if (g_SF.Memory.ReadResetsCount() > lastResetCount OR g_SharedData.TriggerStart) ; first loop or Modron has reset
+			if (g_SF.Memory.ReadWelcomeBackActive())
+			{
+				g_SF.DirectedInput(,,"{Esc}")
+			}
+            if ( g_SF.Memory.ReadResetsCount() > lastResetCount OR g_SharedData.TriggerStart) ; first loop or Modron has reset
             {
                 g_SharedData.BossesHitThisRun := 0
                 g_SF.ToggleAutoProgress( 0, false, true )
                 g_SF.WaitForFirstGold()
+				g_SF.AH()
                 keyspam := Array()
                 if g_BrivUserSettings[ "Fkeys" ]
                     keyspam := g_SF.GetFormationFKeys(formationModron)
@@ -355,13 +360,13 @@ class IC_BrivGemFarm_Class
             else
             { 
                 ; Briv ran out of jumps but has enough stacks for a new adventure, restart adventure
-                if ( g_SF.Memory.ReadHasteStacks() < 50 AND stacks > targetStacks AND g_SF.Memory.ReadHighestZone() > 10 AND (g_SF.Memory.GetModronResetArea() - g_SF.Memory.ReadHighestZone() > 5 ))
-                {
-                    stackFail := StackFailStates.FAILED_TO_REACH_STACK_ZONE_HARD ; 4
-                    g_SharedData.StackFailStats.TALLY[stackfail] += 1
-                    forcedReset := true
-                    forcedResetReason := "Briv ran out of jumps but has enough stacks for a new adventure"
-                }
+                ;if ( g_SF.Memory.ReadHasteStacks() < 50 AND stacks > targetStacks AND g_SF.Memory.ReadHighestZone() > 10 AND (g_SF.Memory.GetModronResetArea() - g_SF.Memory.ReadHighestZone() > 5 ))
+                ;{
+                ;    stackFail := StackFailStates.FAILED_TO_REACH_STACK_ZONE_HARD ; 4
+                ;    g_SharedData.StackFailStats.TALLY[stackfail] += 1
+                ;    forcedReset := true
+                ;    forcedResetReason := "Briv ran out of jumps but has enough stacks for a new adventure"
+                ;}
                 ; stacks are more than the target stacks and party is more than "ResetZoneBuffer" levels past stack zone, restart adventure
                 ; (for restarting after stacking without going to modron reset level)
                 if ( stacks > targetStacks AND CurrentZone > g_BrivUserSettings[ "StackZone" ] + g_BrivUserSettings["ResetZoneBuffer"])
@@ -374,7 +379,8 @@ class IC_BrivGemFarm_Class
                 if(forcedReset)
                     g_SF.RestartAdventure(forcedResetReason)
             }
-        }
+        } 
+
         return stackfail
     }
 
