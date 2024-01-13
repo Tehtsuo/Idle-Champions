@@ -113,7 +113,7 @@ Reload_Clicked()
 Launch_Clicked()
 {
     programLoc := g_UserSettings[ "InstallPath" ]
-    Run, %programLoc%
+    Run, %programLoc% /k ,,hide,PID1
     Process, Exist, % g_UserSettings[ "ExeName"]
     g_SF.PID := ErrorLevel
 }

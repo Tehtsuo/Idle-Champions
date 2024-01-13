@@ -815,7 +815,7 @@ class IC_SharedFunctions_Class
         {
             g_SharedData.LoopString := "Opening IC.."
             programLoc := g_UserSettings[ "InstallPath" ]
-            Run, %programLoc%
+			Run, %programLoc% /k ,,hide,PID1
             Sleep, %waitForProcessTime%
             ; Add 10s (default) to ElapsedTime so each exe waiting loop will take at least 10s before trying to run a new instance of hte game
             timeoutForPID := ElapsedTime + processWaitingTimeout 

@@ -15,3 +15,7 @@ AddOns/GeneratedAddonInclude.ahk
 AddOns/IC_Addon_Management/AddonManagement.json
 LastGUID*.json
 Current*.json
+IC-Addons2/
+IC_Addons/
+IC_Addons3/
+IC_Addons4/
