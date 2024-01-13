@@ -6,6 +6,8 @@
 #include %A_LineFile%\..\IC_EngineSettings_Class.ahk
 #include %A_LineFile%\..\IC_CrusadersGameDataSet_Class.ahk
 #include %A_LineFile%\..\IC_DialogManager_Class.ahk
+#include %A_LineFile%\..\IC_UserStatHandler_Class.ahk
+#include %A_LineFile%\..\IC_UserData_Class.ahk
 #include %A_LineFile%\..\IC_ActiveEffectKeyHandler_Class.ahk
 #include *i %A_LineFile%\..\Imports\IC_GameVersion32_Import.ahk
 #include *i %A_LineFile%\..\Imports\IC_GameVersion64_Import.ahk
@@ -43,6 +45,9 @@ class IC_MemoryFunctions_Class
             ExitApp
         }
         currentPointers := JSON.parse( oData )
+        versionArray := StrSplit(currentPointers.Version, ".")
+        if(versionArray.Count() > 1)
+            currentPointers.Version := Round(currentPointers.Version, 1)
         this.PointerVersionString := currentPointers.Version . (currentPointers.Platform ? (" (" currentPointers.Platform  . ") ") : "")
         _MemoryManager.exeName := g_UserSettings[ "ExeName" ]
         _MemoryManager.Refresh()
@@ -51,13 +56,15 @@ class IC_MemoryFunctions_Class
         this.EngineSettings := new IC_EngineSettings_Class(currentPointers.EngineSettings.moduleAddress, currentPointers.EngineSettings.staticOffset, currentPointers.EngineSettings.moduleOffset)
         this.CrusadersGameDataSet := new IC_CrusadersGameDataSet_Class(currentPointers.CrusadersGameDataSet.moduleAddress, currentPointers.CrusadersGameDataSet.moduleOffset)
         this.DialogManager := new IC_DialogManager_Class(currentPointers.DialogManager.moduleAddress, currentPointers.DialogManager.moduleOffset)
+        this.UserStatHandler := new IC_UserStatHandler_Class(currentPointers.UserStatHandler.moduleAddress, currentPointers.UserStatHandler.staticOffset, currentPointers.UserStatHandler.moduleOffset)
+        this.UserData := new IC_UserData_Class(currentPointers.UserData.moduleAddress, currentPointers.UserData.staticOffset, currentPointers.UserData.moduleOffset)
         this.ActiveEffectKeyHandler := new IC_ActiveEffectKeyHandler_Class(this)
     }
 
     ;Updates installed after the date of this script may result in the pointer addresses no longer being accurate.
     GetVersion()
     {
-        return "v2.1.3, 2023-10-6, IC v0.463+"
+        return "v2.4.5, 2023-12-06"
     }
 
     GetPointersVersion()
@@ -82,6 +89,8 @@ class IC_MemoryFunctions_Class
         this.EngineSettings.Refresh()
         this.CrusadersGameDataSet.Refresh()
         this.DialogManager.Refresh()
+        this.UserStatHandler.Refresh()
+        this.UserData.Refresh()
         this.ActiveEffectKeyHandler.Refresh()
     }
 
@@ -609,7 +618,7 @@ class IC_MemoryFunctions_Class
 
     ReadUltimateCooldownByItem(item := 0)
     {
-        return g_SF.Memory.GameManager.game.gameInstances[this.GameInstance].Screen.uiController.ultimatesBar.ultimateItems[item].ultimateAttack.CooldownTimer.Read()
+        return g_SF.Memory.GameManager.game.gameInstances[this.GameInstance].Screen.uiController.ultimatesBar.ultimateItems[item].ultimateAttack.internalCooldownTimer.Read()
     }
 
     ReadWelcomeBackActive()
@@ -686,10 +695,10 @@ class IC_MemoryFunctions_Class
     {
         val := true
         ; The nextUpgrade pointer could be null if no upgrades are found.
-        if (this.GameManager.game.gameInstances[this.GameInstance].Screen.uiController.bottomBar.heroPanel.activeBoxes[seat - 1].nextupgrade.Read())
+        if (this.GameManager.game.gameInstances[this.GameInstance].Screen.uiController.bottomBar.heroPanel.heroBoxsBySeat[seat].nextupgrade.Read())
         {
             ;TODO Re-Verify this value
-            val := this.GameManager.game.gameInstances[this.GameInstance].Screen.uiController.bottomBar.heroPanel.activeBoxes[seat - 1].nextupgrade.IsPurchased.Read()
+            val := this.GameManager.game.gameInstances[this.GameInstance].Screen.uiController.bottomBar.heroPanel.heroBoxsBySeat[seat].nextupgrade.IsPurchased.Read()
         }
         return val
     }
@@ -747,8 +756,27 @@ class IC_MemoryFunctions_Class
 
     GetHeroNextUpgradeIsPurchased(champID := 1)
     {
-        seat := this.ReadChampSeatByID(champID) - 1 ; index starts at 0
-        return this.GameManager.game.gameInstances[this.GameInstance].Screen.uiController.bottomBar.heroPanel.activeBoxes[seat].nextUpgrade.IsPurchased.Read()
+        currIndex := -1
+        size := this.GameManager.game.gameInstances[this.GameInstance].Screen.uiController.bottomBar.heroPanel.activeBoxes.size.Read()
+        if size != 12
+            return ""
+        loop, %size%
+        {
+            currID := this.GameManager.game.gameInstances[this.GameInstance].Screen.uiController.bottomBar.heroPanel.activeBoxes[A_Index - 1].hero.def.ID.read()
+            if ( currID == champID)
+            {
+                currIndex := A_Index - 1
+                break
+            }
+        }
+        if (currIndex < 0)
+            return ""
+        return this.GameManager.game.gameInstances[this.GameInstance].Screen.uiController.bottomBar.heroPanel.activeBoxes[currIndex].nextUpgrade.IsPurchased.Read()
+    }
+
+    ReadPurchasedUpgradeID(champID := 1, index := 0)
+    {
+        return this.GameManager.game.gameInstances[this.GameInstance].Controller.userData.HeroHandler.heroes[this.GetHeroHandlerIndexByChampID(champID)].purchasedUpgradeIDs[index].Read()
     }
 
     ;=========================
@@ -789,7 +817,7 @@ class IC_MemoryFunctions_Class
     ReadBrivSlot4ilvl()
     {
         champID := 58, slot := 4
-        return Floor(this.GameManager.game.gameInstances[this.GameInstance].Controller.UserData.LootHandler.LootByHeroID[champID].List[slot-1].Enchant.Read("Double"))
+        return Floor(this.GameManager.game.gameInstances[this.GameInstance].Controller.UserData.LootHandler.LootByHeroID[champID].List[slot-1].Enchant.Read("Double") + 1)
     }
 
     ; Returns the formation array of the formation used in the currently active modron.
@@ -867,7 +895,7 @@ class IC_MemoryFunctions_Class
     GetInventoryBuffAmountByID(buffID)
     {
         size := this.ReadInventoryItemsCount()
-        if(!size)
+        if (size < 0 OR size > 2000)
             return ""
         ; Find the buff
         index := this.BinarySearchList(this.GameManager.game.gameInstances[this.GameInstance].Controller.userData.BuffHandler.inventoryBuffs, ["ID"], 1, size, buffID)
@@ -880,7 +908,7 @@ class IC_MemoryFunctions_Class
     GetInventoryBuffNameByID(buffID)
     {
         size := this.ReadInventoryItemsCount()
-        if(!size)
+        if (size < 0 OR size > 2000)
             return ""
         ; Find the buff
         index := this.BinarySearchList(this.GameManager.game.gameInstances[this.GameInstance].Controller.userData.BuffHandler.inventoryBuffs, ["ID"], 1, size, buffID)
@@ -924,7 +952,7 @@ class IC_MemoryFunctions_Class
 
     ReadInventoryChestIDBySlot(slot)
     {
-        return this.GameManager.game.gameInstances[this.GameInstance].Controller.userData.ChestHandler.chestCounts["key", slot].Read()
+        return this.GameManager.game.gameInstances[this.GameInstance].Controller.userData.ChestHandler.chestCounts["key", slot, quickLookup := True].Read()
     }
 
     ReadInventoryChestCountBySlot(slot)
@@ -973,6 +1001,8 @@ class IC_MemoryFunctions_Class
 
     ReadConversionCurrencyBySlot(slot := 0)
     {
+        if ( this.ReadDialogNameBySlot(slot) != "BlessingsStoreDialog")
+            return ""
         return this.DialogManager.dialogs[slot].currentCurrency.ID.Read()
     }
 
@@ -982,7 +1012,9 @@ class IC_MemoryFunctions_Class
     }
 
     ReadForceConvertFavorBySlot(slot := 0)
-    {
+    {        
+        if (this.ReadDialogNameBySlot(slot) != "BlessingsStoreDialog")
+            return ""
         return this.DialogManager.dialogs[slot].forceConvertFavor.Read()
     }
 
@@ -1137,5 +1169,5 @@ class IC_MemoryFunctions_Class
         return version
     }
 
-    #include *i IC_MemoryFunctions_Extended.ahk
+    #include *i %A_LineFile%\..\IC_MemoryFunctions_Extended.ahk
 }

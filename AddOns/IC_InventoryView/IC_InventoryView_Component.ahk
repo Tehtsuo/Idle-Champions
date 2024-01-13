@@ -42,6 +42,7 @@ g_SF.Memory.InitializeChestsIndices()
 class IC_InventoryView_Component
 {
     FirstReadValues := ""
+    SanitySize := 5000 ; sanity check - SanitySize ensures a bad pointer does cause the addon to attempt to read billions of chests. Currently there are about 150-200 champions, 600 chests, and likely < 100 other inventory items. 5000 should allow years of growth.
     ; ReadInventory reads the inventory from in game and displays it in a list. Remembers first run values to compare for changes and per run calculations.
     ReadInventory(runCount := 1, doAddToFirstRead := false)
     {  
@@ -51,6 +52,8 @@ class IC_InventoryView_Component
             doAddToFirstRead := true
         }
         size := g_SF.Memory.ReadInventoryItemsCount()
+        if (size < 0 OR size > this.SanitySize)
+            return
         loop, %size%
         {
             change := ""
@@ -78,12 +81,13 @@ class IC_InventoryView_Component
         ;this.ReadChampionList()
     }
 
+    ; Populates listbox with the full list of champions, their IDs, the index in the list they are, and the index of the champ when the index is expected to be the same as their ID.
     ReadChampionList()
     {
         LV_Delete()
         Gui, Submit, NoHide
         size := g_SF.Memory.ReadChampListSize() + 2
-        if(!size)
+        if(size < 0 OR size > this.SanitySize)
             return "" 
         loop, %size%
         {
@@ -142,7 +146,7 @@ class IC_InventoryView_Component
             doAddToFirstRead := true
         }
         size := g_SF.Memory.ReadInventoryChestListSize()
-        if(!size)
+        if(size < 0 OR size > this.SanitySize)
             return "" 
         loop, %size%
         {
