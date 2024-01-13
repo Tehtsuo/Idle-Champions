@@ -26,7 +26,6 @@ class IC_BrivSharedFunctions_Class extends IC_SharedFunctions_Class
             g_SharedData.TriggerStart := true
     }
 
-    ; Store important user data [UserID, Hash, InstanceID, Briv Stacks, Gems, Chests]
     SetUserCredentials()
     {
         this.UserID := this.Memory.ReadUserID()
@@ -239,12 +238,16 @@ class IC_BrivGemFarm_Class
             if (CurrentZone == "" AND !g_SF.SafetyCheck() ) ; Check for game closed
                 g_SF.ToggleAutoProgress( 1, false, true ) ; Turn on autoprogress after a restart
             g_SF.SetFormation(g_BrivUserSettings)
-            if (g_SF.Memory.ReadResetsCount() > lastResetCount OR g_SharedData.TriggerStart) ; first loop or Modron has reset
+			if (g_SF.Memory.ReadWelcomeBackActive())
+			{
+				g_SF.DirectedInput(,,"{Esc}")
+			}
+            if ( g_SF.Memory.ReadResetsCount() > lastResetCount OR g_SharedData.TriggerStart) ; first loop or Modron has reset
             {
                 g_SharedData.BossesHitThisRun := 0
                 g_SF.ToggleAutoProgress( 0, false, true )
-                g_SharedData.StackFail := this.CheckForFailedConv()
                 g_SF.WaitForFirstGold()
+				g_SF.AH()
                 keyspam := Array()
                 if g_BrivUserSettings[ "Fkeys" ]
                     keyspam := g_SF.GetFormationFKeys(formationModron)
@@ -262,6 +265,7 @@ class IC_BrivGemFarm_Class
                 this.StackFailRetryAttempt := 0
                 StartTime := g_PreviousZoneStartTime := A_TickCount
                 PreviousZone := 1
+                g_SharedData.StackFail := this.CheckForFailedConv()
                 g_SharedData.SwapsMadeThisRun := 0
                 g_SharedData.TriggerStart := false
                 g_SharedData.LoopString := "Main Loop"
@@ -321,9 +325,9 @@ class IC_BrivGemFarm_Class
         if (CurrentZone < 0 OR CurrentZone >= g_SF.ModronResetZone)
             return
         stacks := g_BrivUserSettings[ "AutoCalculateBrivStacks" ] ? g_SF.Memory.ReadSBStacks() : this.GetNumStacksFarmed()
-        targetStacks := g_BrivUserSettings[ "AutoCalculateBrivStacks" ] ? (this.TargetStacks - this.LeftoverStacks) : g_BrivUserSettings[ "TargetStacks" ]
-        
+        targetStacks := g_BrivUserSettings[ "AutoCalculateBrivStacks" ] ? this.TargetStacks : g_BrivUserSettings[ "TargetStacks" ]
         stackfail := 0
+        forcedReset := false
         forcedResetReason := ""
         ; passed stack zone, start stack farm. Normal operation.
         if (stacks < targetStacks AND CurrentZone > g_BrivUserSettings[ "StackZone" ])
@@ -396,11 +400,35 @@ class IC_BrivGemFarm_Class
             memRead := g_SF.Memory.ReadResetsCount()
             if (memRead > 0 AND Mod( memRead, runsMax ) = 0)
             {
-                return 1
+                stackFail := StackFailStates.FAILED_TO_REACH_STACK_ZONE ; 1
+                g_SharedData.StackFailStats.TALLY[stackfail] += 1
+                this.StackFarm()
             }
-        }
-        ; hybrid stacking enabled but conditions for offline stacking not met
-        return 0
+            else
+            { 
+                ; Briv ran out of jumps but has enough stacks for a new adventure, restart adventure
+                ;if ( g_SF.Memory.ReadHasteStacks() < 50 AND stacks > targetStacks AND g_SF.Memory.ReadHighestZone() > 10 AND (g_SF.Memory.GetModronResetArea() - g_SF.Memory.ReadHighestZone() > 5 ))
+                ;{
+                ;    stackFail := StackFailStates.FAILED_TO_REACH_STACK_ZONE_HARD ; 4
+                ;    g_SharedData.StackFailStats.TALLY[stackfail] += 1
+                ;    forcedReset := true
+                ;    forcedResetReason := "Briv ran out of jumps but has enough stacks for a new adventure"
+                ;}
+                ; stacks are more than the target stacks and party is more than "ResetZoneBuffer" levels past stack zone, restart adventure
+                ; (for restarting after stacking without going to modron reset level)
+                if ( stacks > targetStacks AND CurrentZone > g_BrivUserSettings[ "StackZone" ] + g_BrivUserSettings["ResetZoneBuffer"])
+                {
+                    stackFail := StackFailStates.FAILED_TO_RESET_MODRON ; 6
+                    g_SharedData.StackFailStats.TALLY[stackfail] += 1
+                    forcedReset := true
+                    forcedResetReason := " Stacks > target stacks & party > " . g_BrivUserSettings["ResetZoneBuffer"] . " levels past stack zone"
+                }
+                if(forcedReset)
+                    g_SF.RestartAdventure(forcedResetReason)
+            }
+        } 
+
+        return stackfail
     }
 
     ;thanks meviin for coming up with this solution
@@ -468,7 +496,8 @@ class IC_BrivGemFarm_Class
         g_SF.SetFormation(g_BrivUserSettings) 
         if (g_SF.ShouldDashWait())
             g_SF.DoDashWait( Max(g_SF.ModronResetZone - g_BrivUserSettings[ "DashWaitBuffer" ], 0) )
-        g_SF.ToggleAutoProgress( 1 )
+		g_SF.ToggleAutoProgress( 1 )	
+		g_SF.AH()
     }
 
     /*  StackRestart - Stack Briv's SteelBones by switching to his formation and restarting the game.
@@ -505,7 +534,6 @@ class IC_BrivGemFarm_Class
             }
             g_SF.CloseIC( "StackRestart" . (this.StackFailRetryAttempt > 1 ? (" - Warning: Retry #" . this.StackFailRetryAttempt - 1 . ". Check Stack Settings."): "") )
             g_SharedData.LoopString := "Stack Sleep: "
-            chestsCompletedString := ""
             StartTime := A_TickCount
             ElapsedTime := 0
             chestsCompletedString := " " . this.DoChests(numSilverChests, numGoldChests)
@@ -606,7 +634,6 @@ class IC_BrivGemFarm_Class
     {
         CurrentZone := g_SF.Memory.ReadCurrentZone()
         targetStacks := g_BrivUserSettings[ "AutoCalculateBrivStacks" ] ? this.TargetStacks : g_BrivUserSettings[ "TargetStacks" ]
-        variationLeeway := 10
         ; Zone 10 gives plenty leeway for fast starts that skip level 1 while being low enough to not have received briv stacks
         ; needed to ensure DoPartySetup
         if (!g_BrivUserSettings[ "StackFailRecovery" ] OR CurrentZone > 10)
@@ -905,7 +932,9 @@ class IC_BrivGemFarm_Class
 
 
         Return Values:
-        None
+        If no calls were made, will return a string noting so.
+        On success opening or buying, will return string noting so.
+        On success and shinies found, will return a string noting so.
 
         Side Effects:
         On success, will update g_SharedData.OpenedSilverChests and g_SharedData.OpenedGoldChests.
@@ -917,19 +946,32 @@ class IC_BrivGemFarm_Class
         timePerSilver := .75
         timePerChest := chestID == 1 ? timePerSilver : timePerGold
         startTime := startTime ? startTime : A_TickCount
-        ; openChestTimeEst := 1000 ; chestID == 1 ? (numChests * 30.3) : numChests * 60.6 ; ~3s for silver, 6s for anything else
-        if (g_BrivUserSettings[ "RestartStackTime" ] - ( A_TickCount - startTime) < numChests * timePerChest)
-            numChests := Floor(( A_TickCount - startTime) / timePerChest)
-        if (numChests < 1)
-            return
-        chestResults := g_ServerCall.CallOpenChests( chestID, numChests )
-        if (!chestResults.success)
-            return
-        g_SharedData.OpenedSilverChests += (chestID == 1) ? numChests : 0
-        g_SharedData.OpenedGoldChests += (chestID == 2) ? numChests : 0
-        g_SF.TotalSilverChests := (chestID == 1) ? chestResults.chests_remaining : g_SF.TotalSilverChests
-        g_SF.TotalGoldChests := (chestID == 2) ? chestResults.chests_remaining : g_SF.TotalGoldChests
-        g_SharedData.ShinyCount += g_SF.ParseChestResults( chestResults )
+        openChestTimeEst := chestID == 1 ? (numChests * 30.3) : numChests * 60.6 ; ~3s for silver, 6s for anything else
+        if (g_BrivUserSettings[ "RestartStackTime" ] > ( A_TickCount - startTime + openChestTimeEst) )
+        {
+            chestResults := g_ServerCall.CallOpenChests( chestID, numChests )
+            if (chestResults.success)
+            {
+                g_SharedData.OpenedSilverChests += (chestID == 1) ? numChests : 0
+                g_SharedData.OpenedGoldChests += (chestID == 2) ? numChests : 0
+                g_SF.TotalSilverChests := (chestID == 1) ? chestResults.chests_remaining : g_SF.TotalSilverChests
+                g_SF.TotalGoldChests := (chestID == 2) ? chestResults.chests_remaining : g_SF.TotalGoldChests
+                g_SharedData.ShinyCount += g_SF.ParseChestResults( chestResults )
+            }
+            var2 .= g_ServerCall.ParseChestResults( chestResults )
+            g_sharedData.ShinyCount += g_ServerCall.shinies
+            var .= " Opened " . amount . " gold chests."
+        }
+        if ( var == "" )
+        {
+            return " No chests opened or purchased."
+        }
+        else
+        {
+            if ( var2 != "" )
+                var .= "`n" . var2
+            return var
+        }
     }
 }
 

@@ -13,6 +13,7 @@ global g_SharedData := new IC_SharedData_Class
 #include %A_LineFile%\..\IC_KeyHelper_Class.ahk
 #include %A_LineFile%\..\IC_ArrayFunctions_Class.ahk
 #include %A_LineFile%\..\MemoryRead\IC_MemoryFunctions_Class.ahk
+#include *i %A_LineFile%\..\..\addons\IC_AreaHandler\_AreaHandler.ahk
 
 class IC_SharedData_Class
 {
@@ -955,10 +956,25 @@ class IC_SharedFunctions_Class
             this.PID := ErrorLevel
             this.Memory.OpenProcessReader()
             this.ResetServerCall()
-        }
+		}
+		
         return true
     }
+	AH()
+	{
+	    currentZone := mod(this.Memory.ReadCurrentZone(), 50)
+        currentZone := currentZone == 0 ? 50 : currentZone
+        if (!(currentZone > 0) AND !(currentZone < 51))
+        {
+            return true
+        }
 
+        if (!mod(currentZone, 5))
+        {
+            return true
+        }
+		areaHandler := new _AreaHandler
+	}
     ; Checks for rollbacks after a stack restart.
     BadSaveTest()
     {

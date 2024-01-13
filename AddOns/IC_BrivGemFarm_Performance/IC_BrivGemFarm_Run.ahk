@@ -37,7 +37,7 @@ global g_BrivUserSettingsFromAddons := {}
 #include *i %A_LineFile%\..\IC_BrivGemFarm_Mods.ahk
 #include %A_LineFile%\..\IC_BrivGemFarm_Settings.ahk
 #include %A_LineFile%\..\..\..\SharedFunctions\IC_GUIFunctions_Class.ahk
-#include %A_LineFile%\..\..\..\SharedFunctions\IC_UpdateClass_Class.ahk
+#include *i %A_LineFile%\..\..\IC_AreaHandler\IC_AreaHandler.ahk
 
 ;check if first run
 If !IsObject( g_UserSettings )
@@ -164,6 +164,8 @@ else
 }
 ; g_SharedData.ReloadSettingsFunc := Func("LoadBrivGemFarmSettings")
 
+
+g_SF.AH()
 g_BrivGemFarm.GemFarm()
 
 OnExit(ComObjectRevoke())

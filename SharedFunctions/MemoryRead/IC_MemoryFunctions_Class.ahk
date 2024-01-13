@@ -625,7 +625,6 @@ class IC_MemoryFunctions_Class
     {
         return this.GameManager.game.gameInstances[this.GameInstance].Screen.uiController.notificationManager.notificationDisplay.welcomeBackNotification.Active.Read()
     }
-
     ;======================
     ; Retrieving Formations
     ;======================
